@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/connection_status_widget.dart';
+import '../../utils/constants.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -26,19 +28,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _login() async {
-    print('=== _login method called ===');
-    print('Email: ${_emailController.text.trim()}');
-    print('Password length: ${_passwordController.text.length}');
-    
-    if (!_formKey.currentState!.validate()) {
-      print('Form validation failed');
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
-    print('Form validation passed, starting login...');
     setState(() => _isLoading = true);
 
     try {
+      print('LoginScreen: Attempting login with email: ${_emailController.text.trim()}');
+      
       final authNotifier = ref.read(authProvider.notifier);
       final success = await authNotifier.login(
         _emailController.text.trim(),
@@ -47,25 +43,53 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       if (mounted) {
         if (success) {
-          print('Login successful, navigating to /home');
+          print('LoginScreen: Login successful, navigating to home');
           context.go('/home');
         } else {
-          print('Login failed');
+          print('LoginScreen: Login failed');
+          // Obtener el error específico del estado
+          final authState = ref.read(authProvider);
+          final errorMessage = authState.error ?? 'Error al iniciar sesión. Verifica tus credenciales.';
+          
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Error: Credenciales incorrectas'),
+            SnackBar(
+              content: Text(errorMessage),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Probar Conexión',
+                textColor: Colors.white,
+                onPressed: _testConnection,
+              ),
             ),
           );
         }
       }
     } catch (e) {
-      print('Login exception: $e');
+      print('LoginScreen: Exception during login: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString()}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('❌ Error de Login'),
+                const SizedBox(height: 4),
+                Text('Detalles: ${e.toString()}', style: const TextStyle(fontSize: 12)),
+                const SizedBox(height: 8),
+                const Text('💡 Verifica:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('• Conexión a internet\n• Credenciales correctas\n• Estado del servidor', 
+                  style: TextStyle(fontSize: 12)),
+              ],
+            ),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'Test Conexión',
+              textColor: Colors.white,
+              onPressed: _testConnection,
+            ),
           ),
         );
       }
@@ -76,207 +100,479 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _testConnection() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Probando conexión...'),
+            SizedBox(height: 8),
+            Text('Esto puede tardar 30-60 segundos', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 60);
+      dio.options.receiveTimeout = const Duration(seconds: 60);
+      dio.options.sendTimeout = const Duration(seconds: 60);
+      
+      dio.options.headers = {
+        'User-Agent': 'GestionPedidos-Mobile/1.0',
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      };
+      
+      print('Testing connection to: ${ApiConstants.baseUrl}/health');
+      final stopwatch = Stopwatch()..start();
+      
+      final response = await dio.get('${ApiConstants.baseUrl}/health');
+      
+      stopwatch.stop();
+      Navigator.of(context).pop();
+      
+      if (response.statusCode == 200) {
+        _showResult('✅ Conexión Exitosa', 
+          'Backend respondió en ${stopwatch.elapsedMilliseconds}ms\n\n${response.data}\n\n• Estado: FUNCIONANDO\n• Latencia: ${stopwatch.elapsedMilliseconds}ms\n• Servidor: Render.com', Colors.green);
+      } else {
+        _showResult('⚠️ Respuesta Inesperada', 
+          'Status HTTP: ${response.statusCode}\nTiempo: ${stopwatch.elapsedMilliseconds}ms', Colors.orange);
+      }
+    } catch (e) {
+      Navigator.of(context).pop();
+      print('Connection error details: $e');
+      
+      String errorMessage;
+      String troubleshooting = '';
+      
+      if (e.toString().contains('timeout') || e.toString().contains('SocketException')) {
+        errorMessage = '⏰ TIMEOUT DE CONEXIÓN';
+        troubleshooting = '''🔄 COLD START DE RENDER DETECTADO
+
+Render pone el servidor en "sleep" después de inactividad.
+La primera conexión puede tardar 30-60 segundos.
+
+✅ SOLUCIONES:
+• Espera 1-2 minutos y vuelve a intentar
+• El servidor está "despertando"
+• Esto es completamente normal
+
+🌐 VERIFICACIONES ADICIONALES:
+• Confirma que tienes internet
+• Prueba cambiar de WiFi a datos móviles
+• Verifica que no haya restricciones de firewall''';
+      } else if (e.toString().contains('network') || e.toString().contains('connection') || e.toString().contains('resolve')) {
+        errorMessage = '🌐 ERROR DE RED';
+        troubleshooting = '''❌ PROBLEMA DE CONECTIVIDAD
+
+🔍 DIAGNÓSTICO:
+• Tu dispositivo no puede alcanzar el servidor
+• Puede ser problema de DNS o firewall
+
+✅ SOLUCIONES:
+• Cambia de WiFi a datos móviles (o viceversa)
+• Verifica que tengas internet funcional
+• Prueba abrir https://google.com en tu navegador
+• Reinicia tu conexión de red
+• Contacta a tu proveedor de internet si persiste''';
+      } else if (e.toString().contains('certificate') || e.toString().contains('handshake')) {
+        errorMessage = '🔒 ERROR DE CERTIFICADO SSL';
+        troubleshooting = '''🛡️ PROBLEMA DE SEGURIDAD
+
+El dispositivo no puede verificar el certificado SSL.
+
+✅ SOLUCIONES:
+• Verifica que la fecha/hora del dispositivo sea correcta
+• Actualiza el sistema operativo Android
+• Prueba con una red diferente''';
+      } else {
+        errorMessage = '❌ ERROR DESCONOCIDO';
+        troubleshooting = '''🔍 DETALLES TÉCNICOS:
+${e.toString()}
+
+✅ SOLUCIONES GENERALES:
+• Reinicia la aplicación
+• Verifica tu conexión a internet
+• Prueba con datos móviles
+• Contacta soporte si persiste''';
+      }
+      
+      _showResult(errorMessage, troubleshooting, Colors.red);
+    }
+  }
+
+  void _showResult(String title, String message, Color color) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title, style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(message, style: const TextStyle(fontSize: 14)),
+              const SizedBox(height: 20),
+              const Divider(),
+              const SizedBox(height: 10),
+              const Text('🔧 Información Técnica:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('🌐 URL: ${ApiConstants.baseUrl}', style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                    const SizedBox(height: 4),
+                    Text('📱 Dispositivo: Android', style: const TextStyle(fontSize: 12)),
+                    const SizedBox(height: 4),
+                    Text('⏰ Timestamp: ${DateTime.now().toString()}', style: const TextStyle(fontSize: 12)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (color == Colors.red) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange[300]!),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('💡 CONSEJO IMPORTANTE:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                      SizedBox(height: 4),
+                      Text('Si este es tu primer intento, espera 1-2 minutos. Los servidores gratuitos de Render tardan en "despertar".', 
+                        style: TextStyle(fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+          if (color == Colors.red)
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _testConnection();
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              child: const Text('Reintentar', style: TextStyle(color: Colors.white)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _createEmergencyUser() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Creando usuario de emergencia...'),
+            SizedBox(height: 8),
+            Text('Esto puede tardar unos segundos', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 30);
+      dio.options.receiveTimeout = const Duration(seconds: 30);
+      
+      // Crear usuario admin
+      final adminData = {
+        'name': 'Administrador de Prueba',
+        'email': 'admin@admin.com',
+        'password': 'admin123',
+        'phone': '123456789',
+        'address': 'Dirección de prueba'
+      };
+      
+      print('Creando usuario admin...');
+      final adminResponse = await dio.post('${ApiConstants.baseUrl}/auth/register', data: adminData);
+      
+      Navigator.of(context).pop();
+      
+      _showResult('✅ Usuario Creado', 
+        'Usuario admin creado exitosamente:\n\n'
+        'Email: admin@admin.com\n'
+        'Password: admin123\n\n'
+        '🎯 Ahora puedes hacer login con estas credenciales.\n\n'
+        'Respuesta del servidor:\n${adminResponse.data}', 
+        Colors.green);
+        
+    } catch (e) {
+      Navigator.of(context).pop();
+      print('Error creando usuario: $e');
+      
+      String errorMessage = '❌ ERROR AL CREAR USUARIO\n\n';
+      
+      if (e is DioException) {
+        if (e.response?.statusCode == 400) {
+          errorMessage += '🔍 Error de validación:\n${e.response?.data}\n\n';
+          errorMessage += '💡 Posibles causas:\n';
+          errorMessage += '• El usuario ya existe\n';
+          errorMessage += '• Campos requeridos faltantes\n';
+          errorMessage += '• Formato de datos incorrecto\n';
+        } else if (e.response?.statusCode == 409) {
+          errorMessage += '⚠️ El usuario ya existe!\n\n';
+          errorMessage += '✅ Puedes intentar hacer login con:\n';
+          errorMessage += 'Email: admin@admin.com\n';
+          errorMessage += 'Password: admin123\n';
+        } else {
+          errorMessage += 'Código de error: ${e.response?.statusCode}\n';
+          errorMessage += 'Respuesta: ${e.response?.data}\n';
+        }
+      } else {
+        errorMessage += 'Error técnico: ${e.toString()}\n';
+      }
+      
+      errorMessage += '\n🔧 SOLUCIONES:\n';
+      errorMessage += '• Verifica la conexión a internet\n';
+      errorMessage += '• Prueba el "Test de Conexión" primero\n';
+      errorMessage += '• Si el usuario ya existe, intenta login directamente\n';
+      
+      _showResult('❌ Error Creación Usuario', errorMessage, Colors.red);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
       body: SafeArea(
-        child: Column(
-          children: [
-            // Indicador de conexión en la parte superior
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Gestión de Pedidos',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[700],
-                    ),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 40),
+                
+                // Logo y título
+                Icon(
+                  Icons.shopping_cart,
+                  size: 80,
+                  color: Theme.of(context).primaryColor,
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Gestión de Pedidos',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).primaryColor,
                   ),
-                  const ConnectionStatusWidget(),
-                ],
-              ),
-            ),
-            // Contenido principal
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 40),
-                    
-                    // Logo/Título
-                    Icon(
-                      Icons.shopping_cart,
-                      size: 80,
-                      color: Theme.of(context).primaryColor,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Gestión de Pedidos',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Inicia sesión para continuar',
+                  style: Theme.of(context).textTheme.bodyLarge,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 40),
+
+                // Widget de estado de conexión
+                const ConnectionStatusWidget(),
+                const SizedBox(height: 24),
+
+                // Formulario de login
+                Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Correo electrónico',
+                          prefixIcon: Icon(Icons.email),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Por favor ingresa tu correo';
+                          }
+                          if (!value.contains('@')) {
+                            return 'Ingresa un correo válido';
+                          }
+                          return null;
+                        },
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Inicia sesión para continuar',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: Colors.grey[600],
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: _isObscured,
+                        decoration: InputDecoration(
+                          labelText: 'Contraseña',
+                          prefixIcon: const Icon(Icons.lock),
+                          suffixIcon: IconButton(
+                            icon: Icon(_isObscured ? Icons.visibility : Icons.visibility_off),
+                            onPressed: () => setState(() => _isObscured = !_isObscured),
+                          ),
+                          border: const OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Por favor ingresa tu contraseña';
+                          }
+                          return null;
+                        },
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    
-                    const SizedBox(height: 48),
-                    
-                    // Formulario
-                    Form(
-                      key: _formKey,
-                      child: Column(
+                      const SizedBox(height: 24),
+                      
+                      // Botón de login
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _login,
+                          child: _isLoading
+                              ? const CircularProgressIndicator()
+                              : const Text('Iniciar Sesión', style: TextStyle(fontSize: 16)),
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 20),
+                      
+                      // Botón de test de conexión - MEJORADO
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _testConnection,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.wifi_find, color: Colors.white),
+                              SizedBox(width: 8),
+                              Text('Test de Conexión', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 20),
+                      
+                      // Crear cuenta si no existe
+                      Row(
                         children: [
-                          // Campo Email
-                          TextFormField(
-                            controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            decoration: InputDecoration(
-                              labelText: 'Email',
-                              hintText: 'tu@email.com',
-                              prefixIcon: const Icon(Icons.email_outlined),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: Colors.grey[300]!),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: Theme.of(context).primaryColor),
-                              ),
+                          Expanded(
+                            child: Container(
+                              height: 1,
+                              color: Colors.grey[300],
                             ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Por favor ingresa tu email';
-                              }
-                              if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                                return 'Por favor ingresa un email válido';
-                              }
-                              return null;
-                            },
                           ),
-                          
-                          const SizedBox(height: 16),
-                          
-                          // Campo Contraseña
-                          TextFormField(
-                            controller: _passwordController,
-                            obscureText: _isObscured,
-                            decoration: InputDecoration(
-                              labelText: 'Contraseña',
-                              hintText: 'Tu contraseña',
-                              prefixIcon: const Icon(Icons.lock_outline),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _isObscured ? Icons.visibility_off : Icons.visibility,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _isObscured = !_isObscured;
-                                  });
-                                },
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: Colors.grey[300]!),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: Theme.of(context).primaryColor),
-                              ),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Por favor ingresa tu contraseña';
-                              }
-                              if (value.length < 6) {
-                                return 'La contraseña debe tener al menos 6 caracteres';
-                              }
-                              return null;
-                            },
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16),
+                            child: Text('¿Primera vez?', style: TextStyle(color: Colors.grey)),
                           ),
-                          
-                          const SizedBox(height: 24),
-                          
-                          // Botón de login
-                          SizedBox(
-                            width: double.infinity,
-                            height: 56,
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _login,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(context).primaryColor,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                elevation: 2,
-                              ),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      height: 20,
-                                      width: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Iniciar Sesión',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
+                          Expanded(
+                            child: Container(
+                              height: 1,
+                              color: Colors.grey[300],
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    
-                    const SizedBox(height: 24),
-                    
-                    // Link a registro
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          '¿No tienes cuenta? ',
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
-                        TextButton(
-                          onPressed: () => context.go('/register'),
-                          child: const Text(
-                            'Regístrate',
-                            style: TextStyle(fontWeight: FontWeight.w600),
+                      
+                      const SizedBox(height: 20),
+                      
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: _createEmergencyUser,
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: Theme.of(context).primaryColor),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.person_add),
+                              SizedBox(width: 8),
+                              Text('Crear Cuenta Admin', style: TextStyle(fontSize: 16)),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+                
+                const SizedBox(height: 40),
+                
+                // Información de usuarios de prueba
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue[200]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '👥 Usuarios de Prueba',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('🔑 Administrador:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text('Email: admin@admin.com'),
+                      const Text('Password: admin123'),
+                      const SizedBox(height: 8),
+                      const Text('👤 Usuario Regular:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text('Email: user@user.com'),
+                      const Text('Password: user123'),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.orange[100],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          '💡 Si es tu primera vez, usa el "Test de Conexión" primero. El servidor puede tardar 1-2 minutos en despertar.',
+                          style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

@@ -1,6 +1,6 @@
 class ApiConstants {
-  // URL base de la API
-  static const String baseUrl = 'https://tu-api.onrender.com/api'; // Cambiar por tu URL de Render
+  // URL base de la API - Render deployment
+  static const String baseUrl = 'https://backend-m4do.onrender.com/api';
   // static const String baseUrl = 'http://192.168.1.4:3000/api'; // IP local (backup)
   // static const String baseUrl = 'http://10.0.2.2:3000/api'; // Emulador Android
   // static const String baseUrl = 'http://localhost:3000/api'; // Desarrollo local

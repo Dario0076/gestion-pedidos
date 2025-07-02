@@ -45,13 +45,14 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
 
       // Crear una instancia temporal de Dio para la prueba
       final dio = Dio();
-      dio.options.connectTimeout = const Duration(seconds: 5);
-      dio.options.receiveTimeout = const Duration(seconds: 5);
+      dio.options.connectTimeout = const Duration(seconds: 30); // Increased for Render cold start
+      dio.options.receiveTimeout = const Duration(seconds: 30); // Increased for Render cold start
       
       // Lista de URLs a probar en orden de prioridad
       final urlsToTry = [
-        'http://192.168.1.4:3000/api/health',  // IP real del host
-        'http://172.23.208.1:3000/api/health', // WSL (Hyper-V)
+        'https://backend-m4do.onrender.com/api/health', // Render deployment (principal)
+        'http://192.168.1.4:3000/api/health',  // IP real del host (backup local)
+        'http://172.23.208.1:3000/api/health', // WSL (Hyper-V) (backup local)
         'http://10.0.2.2:3000/api/health',     // Emulador Android estándar
         'http://127.0.0.1:3000/api/health',    // Localhost
         'http://localhost:3000/api/health',    // Localhost alternativo

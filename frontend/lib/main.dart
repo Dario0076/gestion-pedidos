@@ -15,6 +15,7 @@ import 'screens/admin/products/admin_products_screen.dart';
 import 'screens/admin/categories/admin_categories_screen.dart';
 import 'screens/admin/users/admin_users_screen.dart';
 import 'screens/admin/orders/admin_orders_screen.dart';
+import 'screens/connection_test_screen.dart';
 import 'utils/constants.dart';
 
 void main() async {
@@ -140,6 +141,12 @@ class MyApp extends ConsumerWidget {
         GoRoute(
           path: '/admin/orders',
           builder: (context, state) => const AdminOrdersScreen(),
+        ),
+        
+        // Pantalla de test de conexión
+        GoRoute(
+          path: '/connection-test',
+          builder: (context, state) => const ConnectionTestScreen(),
         ),
         
         // Ruta raíz
