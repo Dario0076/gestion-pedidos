@@ -309,7 +309,7 @@ ${e.toString()}
       // Crear usuario admin
       final adminData = {
         'name': 'Administrador de Prueba',
-        'email': 'admin@admin.com',
+        'email': 'admin@test.com',
         'password': 'admin123',
         'phone': '123456789',
         'address': 'Dirección de prueba'
@@ -322,7 +322,7 @@ ${e.toString()}
       
       _showResult('✅ Usuario Creado', 
         'Usuario admin creado exitosamente:\n\n'
-        'Email: admin@admin.com\n'
+        'Email: admin@test.com\n'
         'Password: admin123\n\n'
         '🎯 Ahora puedes hacer login con estas credenciales.\n\n'
         'Respuesta del servidor:\n${adminResponse.data}', 
@@ -344,7 +344,7 @@ ${e.toString()}
         } else if (e.response?.statusCode == 409) {
           errorMessage += '⚠️ El usuario ya existe!\n\n';
           errorMessage += '✅ Puedes intentar hacer login con:\n';
-          errorMessage += 'Email: admin@admin.com\n';
+          errorMessage += 'Email: admin@test.com\n';
           errorMessage += 'Password: admin123\n';
         } else {
           errorMessage += 'Código de error: ${e.response?.statusCode}\n';
@@ -549,7 +549,7 @@ ${e.toString()}
                       ),
                       const SizedBox(height: 12),
                       const Text('🔑 Administrador:', style: TextStyle(fontWeight: FontWeight.bold)),
-                      const Text('Email: admin@admin.com'),
+                      const Text('Email: admin@test.com'),
                       const Text('Password: admin123'),
                       const SizedBox(height: 8),
                       const Text('👤 Usuario Regular:', style: TextStyle(fontWeight: FontWeight.bold)),
