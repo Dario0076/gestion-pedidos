@@ -44,7 +44,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Future<void> _login() async {
-    if (_formKey.currentState?.validate() != true) return;
+    if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
@@ -253,7 +253,7 @@ La primera conexión puede tardar 30-60 segundos.
                   decoration: BoxDecoration(
                     color: Colors.orange[50],
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange[300] ?? Colors.orange),
+                    border: Border.all(color: Colors.orange[300]!),
                   ),
                   child: const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -460,7 +460,7 @@ La primera conexión puede tardar 30-60 segundos.
                   decoration: BoxDecoration(
                     color: Colors.blue[50],
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue[200] ?? Colors.blue),
+                    border: Border.all(color: Colors.blue[200]!),
                   ),
                   child: const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -490,6 +490,7 @@ La primera conexión puede tardar 30-60 segundos.
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }

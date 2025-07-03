@@ -66,6 +66,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // Indicador de estado de conexión API
           const ConnectionStatusWidget(),
           
+          // Botón de configuración
+          IconButton(
+            icon: const Icon(Icons.settings_outlined, color: Colors.black87),
+            onPressed: () => context.push('/settings'),
+            tooltip: 'Configuración',
+          ),
+          
           // Carrito
           Stack(
             children: [

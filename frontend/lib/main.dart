@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import 'providers/auth_provider.dart';
+import 'providers/theme_provider.dart';
+import 'providers/locale_provider.dart';
+import 'providers/accessibility_provider.dart';
 import 'services/api_service.dart';
+import 'utils/app_themes.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/home/home_screen.dart';
@@ -16,7 +22,17 @@ import 'screens/admin/categories/admin_categories_screen.dart';
 import 'screens/admin/users/admin_users_screen.dart';
 import 'screens/admin/orders/admin_orders_screen.dart';
 import 'screens/connection_test_screen.dart';
-import 'utils/constants.dart';
+import 'screens/settings/settings_screen.dart';
+import 'utils/app_localizations.dart';
+
+// Providers para los nuevos sistemas
+final accessibilityProviderNotifier = ChangeNotifierProvider<AccessibilityProvider>((ref) {
+  return AccessibilityProvider();
+});
+
+final localeProviderNotifier = ChangeNotifierProvider<LocaleProvider>((ref) {
+  return LocaleProvider();
+});
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,38 +53,31 @@ class MyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
+    final themeState = ref.watch(themeProvider);
+    final localeState = ref.watch(localeProviderNotifier);
     
     return MaterialApp.router(
       title: 'Gestión de Pedidos',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(AppTheme.primaryColor),
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-        appBarTheme: const AppBarTheme(
-          centerTitle: true,
-          elevation: 0,
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 24,
-              vertical: 12,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        ),
-        cardTheme: const CardThemeData(
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(12)),
-          ),
-        ),
-      ),
+      
+      // Temas - CORREGIDO PARA QUE RESPONDA A CAMBIOS
+      theme: AppThemes.lightTheme(themeState),
+      darkTheme: AppThemes.darkTheme(themeState),
+      themeMode: AppThemes.getThemeMode(themeState),
+      
+      // Localización
+      locale: localeState.locale,
+      supportedLocales: const [
+        Locale('es', 'ES'),
+        Locale('en', 'US'),
+      ],
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      
       routerConfig: _createRouter(authState.isAuthenticated),
     );
   }
@@ -119,6 +128,10 @@ class MyApp extends ConsumerWidget {
         GoRoute(
           path: '/profile',
           builder: (context, state) => const ProfileScreen(),
+        ),
+        GoRoute(
+          path: '/settings',
+          builder: (context, state) => const SettingsScreen(),
         ),
         
         // Rutas de administrador

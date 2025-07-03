@@ -187,6 +187,13 @@ class ProfileScreen extends ConsumerWidget {
       child: Column(
         children: [
           _buildListTile(
+            icon: Icons.settings,
+            title: 'Configuración',
+            subtitle: 'Tema, idioma y accesibilidad',
+            onTap: () => context.push('/settings'),
+          ),
+          const Divider(height: 1),
+          _buildListTile(
             icon: Icons.help_outline,
             title: 'Ayuda y Soporte',
             subtitle: 'Obtener asistencia',
