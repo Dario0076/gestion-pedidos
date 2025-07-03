@@ -490,6 +490,8 @@ La primera conexión puede tardar 30-60 segundos.
           ),
         ),
       ),
+    ),
     );
+
   }
 }
